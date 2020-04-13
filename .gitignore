@@ -44,3 +44,7 @@ NAMESPACE
 
 # Mac files
 **/.DS_Store
+
+# C object files
+*.[oa]
+*.so
