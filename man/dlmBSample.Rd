@@ -7,7 +7,7 @@
   of the state vectors. 
 }
 \usage{
-dlmBSample(modFilt)
+dlmBSample(modFilt, knownstate)
 }
 %- maybe also 'usage' for other objects documented here.
 \arguments{
@@ -17,9 +17,14 @@ dlmBSample(modFilt)
     the value returned by \code{dlmFilter}), and \code{mod} The latter is an
     object of class \code{"dlm"} or a list with elements \code{GG}, \code{W}
     and, optionally, \code{JGG}, \code{JW}, and \code{X}}
+  \item{knownstate}{"known" state (optional). See details.}
 }
 \details{
   The calculations are based on singular value decomposition.
+  
+  This function is a modification of the original that allows for 
+  input of a "known" state vector via the option \code{knownstate}.
+  (See \code{\link{dlmFilter}}).
 }
 \value{
   The function returns a draw from the posterior distribution 

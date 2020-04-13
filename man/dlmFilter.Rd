@@ -10,7 +10,7 @@
   for objects of class \code{"dlmFiltered"} exist.
 }
 \usage{
-dlmFilter(y, mod, debug = FALSE, simplify = FALSE)
+dlmFilter(y, mod, debug = FALSE, simplify = FALSE, knownstate, control)
 }
 %- maybe also 'usage' for other objects documented here.
 \arguments{
@@ -24,6 +24,8 @@ dlmFilter(y, mod, debug = FALSE, simplify = FALSE)
   \item{debug}{if \code{FALSE}, faster C code will be used, otherwise
     all the computations will be performed in R.}
   \item{simplify}{should the data be included in the output?}
+  \item{knownstate}{"known" state (optional). See details.}
+  \item{control}{control term (optional). See details.}
 }
 \details{%
     The calculations are based on the singular value decomposition (SVD)
@@ -31,6 +33,14 @@ dlmFilter(y, mod, debug = FALSE, simplify = FALSE)
     their SVD.
 
     Missing values are allowed in \code{y}.
+    
+    This function is a modification of the original that allows for 
+    input of a "known" state vector via the option \code{knownstate}.
+    Presumably the "known" state is only occassionally known. Otherwise 
+    it's not worth filtering at all!
+    
+    Optionally, supply a control vector (additional term in the 
+    state equation). Univariate only. Should be the same length as \code{y}.
 }
 \value{%
   A list with the components described below. If \code{simplify} is 

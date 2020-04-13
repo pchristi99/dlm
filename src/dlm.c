@@ -24,8 +24,8 @@ R_CallMethodDef callMethods[] = {
   {"ARtranspar", (DL_FUNC) &ARtranspar, 2},
   {"dlmLL", (DL_FUNC) &dlmLL, 6},
   {"dlmLL0", (DL_FUNC) &dlmLL0, 2},
-  {"dlmFilter", (DL_FUNC) &dlmFilter, 6},
-  {"dlmFilter0", (DL_FUNC) &dlmFilter0, 2},
+  {"dlmFilter", (DL_FUNC) &dlmFilter, 8},
+  {"dlmFilter0", (DL_FUNC) &dlmFilter0, 4},
   {"dlmSmooth", (DL_FUNC) &dlmSmooth, 4},
   {"dlmSmooth0", (DL_FUNC) &dlmSmooth0, 2},
   {"arms", (DL_FUNC) &arms, 5},
@@ -1297,7 +1297,7 @@ SEXP dlmLL0(SEXP y, SEXP mod)
 }
 
 
-SEXP dlmFilter(SEXP y, SEXP mod, SEXP tvFF, SEXP tvV, SEXP tvGG, SEXP tvW)
+SEXP dlmFilter(SEXP y, SEXP mod, SEXP tvFF, SEXP tvV, SEXP tvGG, SEXP tvW, SEXP obs, SEXP ctrl)
 {
 /***** Warning: the function relies on the order of the  *****/
 /***** components of the list 'mod', not on their names. *****/     
@@ -1311,6 +1311,8 @@ SEXP dlmFilter(SEXP y, SEXP mod, SEXP tvFF, SEXP tvV, SEXP tvGG, SEXP tvW)
         *Dx, *sqrtV, *sqrtW, 
         *sqrtVinv, *a, *Ux_prior, *Dx_prior, *f, *Uy, *Dy,
         *e, *tF_Vinv;
+    double *ob=REAL(obs);
+    double *ct=REAL(ctrl);
     double tmp, tmp1, *tmpMat, *tmpMat2, *la_s, *la_u, *la_vt, *la_work,
 	*sqrtVinvTMP, *tF_VinvTMP, eps;
     char la_jobz='S';
@@ -1587,7 +1589,7 @@ SEXP dlmFilter(SEXP y, SEXP mod, SEXP tvFF, SEXP tvV, SEXP tvGG, SEXP tvW)
 	    for (i = 0; i < p; i++) {
 		tmp = 0.0;
 		for (k = 0; k < p; k++)
-		    tmp += sGG[i + p * k] * sm0[k * nPlus];
+		    tmp += sGG[i + p * k] * sm0[k * nPlus] + ct[t];
 		a[i * n] = tmp;
 	    }
         
@@ -1688,6 +1690,10 @@ SEXP dlmFilter(SEXP y, SEXP mod, SEXP tvFF, SEXP tvV, SEXP tvGG, SEXP tvW)
 		for (j = 0; j < m; j++)
 		    tmp += tmpMat2[j + i * m] * e[j];
 		sm0[i * nPlus] = tmp;
+         if (!ISNA(ob[t+n*i])) {
+            sm0[i * nPlus] = ob[t+n*i];
+             Dx[i * nPlus] = 0;
+          }
 	    }
 
 	    /** increment pointers **/
@@ -1700,7 +1706,7 @@ SEXP dlmFilter(SEXP y, SEXP mod, SEXP tvFF, SEXP tvV, SEXP tvGG, SEXP tvW)
 		for (i = 0; i < p; i++) {
 		    tmp = 0.0;
 		    for (k = 0; k < p; k++)
-			tmp += sGG[i + p * k] * sm0[k * nPlus];
+			tmp += sGG[i + p * k] * sm0[k * nPlus] + ct[t];
 		    a[i * n] = tmp;
 		}
         
@@ -1736,6 +1742,10 @@ SEXP dlmFilter(SEXP y, SEXP mod, SEXP tvFF, SEXP tvV, SEXP tvGG, SEXP tvW)
 		Ux = REAL(VECTOR_ELT(UxR, t+1));
 		for (i = 0; i < p; i++) {
 		    sm0[i * nPlus] = a[i * n];
+		    if (!ISNA(ob[t+n*i])) {
+		        sm0[i * nPlus] = ob[t+n*i];
+		        Dx[i * nPlus] = 0;
+		    }
 		    Dx[i * nPlus] = Dx_prior[i * n];
 		    for (j = 0; j < p; j++)
 			Ux[i + j * p] = Ux_prior[i + j * p];
@@ -1806,7 +1816,7 @@ SEXP dlmFilter(SEXP y, SEXP mod, SEXP tvFF, SEXP tvV, SEXP tvGG, SEXP tvW)
 		for (i = 0; i < p; i++) {
 		    tmp = 0.0;
 		    for (k = 0; k < p; k++)
-			tmp += sGG[i + p * k] * sm0[k * nPlus];
+			tmp += sGG[i + p * k] * sm0[k * nPlus] + ct[t];
 		    a[i * n] = tmp;
 		}
 
@@ -1907,6 +1917,10 @@ SEXP dlmFilter(SEXP y, SEXP mod, SEXP tvFF, SEXP tvV, SEXP tvGG, SEXP tvW)
 		    for (j = 0; j < numGood; j++)
 			tmp += tmpMat2[j + i * m] * e[j];
 		    sm0[i * nPlus] = tmp;
+		    if (!ISNA(ob[t+n*i])) {
+		        sm0[i * nPlus] = ob[t+n*i];
+		        Dx[i * nPlus] = 0;
+		    }
 		}
 
 		/** increment pointers **/
@@ -1928,7 +1942,7 @@ SEXP dlmFilter(SEXP y, SEXP mod, SEXP tvFF, SEXP tvV, SEXP tvGG, SEXP tvW)
     return(val);
 }
 
-SEXP dlmFilter0(SEXP y, SEXP mod)
+SEXP dlmFilter0(SEXP y, SEXP mod, SEXP obs, SEXP ctrl)
 {
 /***** Warning: the function relies on the order of the  *****/
 /***** components of the list 'mod', not on their names. *****/     
@@ -1940,6 +1954,8 @@ SEXP dlmFilter0(SEXP y, SEXP mod)
         *Dx, *sqrtW, 
         *sqrtVinv, *a, *Ux_prior, *Dx_prior, *f, *Uy, *Dy,
         *e, *tF_Vinv;
+    double *ob=REAL(obs);
+    double *ct=REAL(ctrl);
     double tmp, tmp1, *tmpMat, *tmpMat2, *la_s, *la_u, *la_vt, *la_work,
         *sqrtVinvTMP, *tF_VinvTMP, eps;
     char la_jobz='S';
@@ -2110,7 +2126,7 @@ SEXP dlmFilter0(SEXP y, SEXP mod)
 	    for (i = 0; i < p; i++) {
 		tmp = 0.0;
 		for (k = 0; k < p; k++)
-		    tmp += sGG[i + p * k] * sm0[k * nPlus];
+		    tmp += sGG[i + p * k] * sm0[k * nPlus] + ct[t];
 		a[i * n] = tmp;
 	    }
         
@@ -2211,6 +2227,10 @@ SEXP dlmFilter0(SEXP y, SEXP mod)
 		for (j = 0; j < m; j++)
 		    tmp += tmpMat2[j + i * m] * e[j];
 		sm0[i * nPlus] = tmp;
+		if (!ISNA(ob[t+n*i])) {
+		    sm0[i * nPlus] = ob[t+n*i];
+		    Dx[i * nPlus] = 0;
+	    }
 	    }
 
 	    /** increment pointers **/
@@ -2223,7 +2243,7 @@ SEXP dlmFilter0(SEXP y, SEXP mod)
 	    for (i = 0; i < p; i++) {
 		tmp = 0.0;
 		for (k = 0; k < p; k++)
-		    tmp += sGG[i + p * k] * sm0[k * nPlus];
+		    tmp += sGG[i + p * k] * sm0[k * nPlus] + ct[t];
 		a[i * n] = tmp;
 	    }
         
@@ -2259,6 +2279,10 @@ SEXP dlmFilter0(SEXP y, SEXP mod)
 	    Ux = REAL(VECTOR_ELT(UxR, t+1));
 	    for (i = 0; i < p; i++) {
 		sm0[i * nPlus] = a[i * n];
+        if (!ISNA(ob[t+n*i])) {
+            sm0[i * nPlus] = ob[t+n*i];
+            Dx[i * nPlus] = 0;
+        }
 		Dx[i * nPlus] = Dx_prior[i * n];
 		for (j = 0; j < p; j++)
 		    Ux[i + j * p] = Ux_prior[i + j * p];
@@ -2329,7 +2353,7 @@ SEXP dlmFilter0(SEXP y, SEXP mod)
 		for (i = 0; i < p; i++) {
 		    tmp = 0.0;
 		    for (k = 0; k < p; k++)
-			tmp += sGG[i + p * k] * sm0[k * nPlus];
+			tmp += sGG[i + p * k] * sm0[k * nPlus] + ct[t];
 		    a[i * n] = tmp;
 		}
 
@@ -2430,6 +2454,10 @@ SEXP dlmFilter0(SEXP y, SEXP mod)
 		    for (j = 0; j < numGood; j++)
 			tmp += tmpMat2[j + i * m] * e[j];
 		    sm0[i * nPlus] = tmp;
+		    if (!ISNA(ob[t+n*i])) {
+		        sm0[i * nPlus] = ob[t+n*i];
+		        Dx[i * nPlus] = 0;
+		    }
 		}
 
 		/** increment pointers **/

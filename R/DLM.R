@@ -1035,7 +1035,8 @@ dlmLL <- function(y, mod, debug=FALSE)
 }
 
 
-dlmFilter <- function(y, mod, debug = FALSE, simplify = FALSE)
+dlmFilter <- function(y, mod, debug = FALSE, simplify = FALSE,
+                      knownstate, control)
 {
     ## Note: V must be nonsingular. It will be forced to be so,
     ## with a warning, otherwise (time-invariant case only).
@@ -1046,8 +1047,29 @@ dlmFilter <- function(y, mod, debug = FALSE, simplify = FALSE)
     y <- as.matrix(y)
     timeNames <- dimnames(y)[[1]]
     stateNames <- names(mod$m0)
+    p <- ncol(mod$FF)
+    obs <- matrix(NA, nrow=length(y), ncol=p)
+    if (hasArg(knownstate)) {
+        knownstate <- as.matrix(knownstate)
+        if (ncol(knownstate) != p)
+            stop("ERROR: object 'knownstate' has the wrong dimensions")
+        if (NROW(y) != NROW(knownstate))
+            stop("ERROR: object 'knownstate' should be the same length as 'y'")
+        obs <- knownstate
+    }
+    ctrl <- matrix(0, nrow=length(y))
+    if (hasArg(control)) {
+        control <- as.matrix(control)
+        if (ncol(control) != 1)
+            stop("ERROR: object 'control' has the wrong dimensions")
+        if (NROW(y) != NROW(control))
+            stop("ERROR: object 'control' should be the same length as 'y'")
+        ctrl <- control
+        ctrl[is.na(ctrl),] <- 0
+    }
     if (!debug) {
         storage.mode(y) <- "double"
+        storage.mode(obs) <- "double"
         matchnames <- match(c("m0", "C0", "FF", "V", "GG", "W"), names(mod))
         for (i in matchnames)
             storage.mode(mod[[i]]) <- "double"
@@ -1089,10 +1111,10 @@ dlmFilter <- function(y, mod, debug = FALSE, simplify = FALSE)
         if (any(c(tvFF,tvV,tvGG,tvW))) {
             mod <- mod[match(c("m0", "C0", "FF", "V", "GG", "W",
                                "JFF", "JV", "JGG", "JW", "X"), names(mod))]
-            ans <- .Call(C_dlmFilter, y, mod, tvFF, tvV, tvGG, tvW, PACKAGE = "dlm")
+            ans <- .Call(C_dlmFilter, y, mod, tvFF, tvV, tvGG, tvW, obs, ctrl, PACKAGE = "dlm")
         } else {
             mod <- mod[match(c("m0", "C0", "FF", "V", "GG", "W"), names(mod))]
-            ans <- .Call(C_dlmFilter0, y, mod, PACKAGE = "dlm")
+            ans <- .Call(C_dlmFilter0, y, mod, obs, ctrl, PACKAGE = "dlm")
         }
         names(ans) <- c("m", "U.C", "D.C", "a", "U.R", "D.R", "f")
     }
@@ -1178,7 +1200,7 @@ dlmFilter <- function(y, mod, debug = FALSE, simplify = FALSE)
             if (!any(whereNA <- is.na(y[i, ]))) { ## No missing values
 
                 ## prior
-                a[i,] <- mod$GG %*% m[i,]
+                a[i,] <- mod$GG %*% m[i,] + ctrl[i,]
                 tmp <- La.svd(rbind( D.C[i,]*t(mod$GG%*%U.C[[i]]), sqrtW ), nu=0)
                 U.R[[i]] <- t(tmp$vt)
                 D.R[i,] <- tmp$d
@@ -1192,14 +1214,26 @@ dlmFilter <- function(y, mod, debug = FALSE, simplify = FALSE)
                 U.C[[i+1]] <- U.R[[i]] %*% t(tmp$vt)
                 foo <- 1/tmp$d; foo[abs(foo)==Inf] <- 0
                 D.C[i+1,] <- foo
-                m[i+1,] <- a[i,] + crossprod(D.C[i+1,]*t(U.C[[i+1]])) %*%
-                    tF.Vinv %*% as.matrix(y[i,]-f[i,])
+                if (any(!is.na(obs[i,]))) {
+                    m[i+1,] <- obs[i,]
+                    D.C[i+1,] <- rep(0, length(mod$m0))
+                }
+                else {
+                    m[i+1,] <- a[i,] + crossprod(D.C[i+1,]*t(U.C[[i+1]])) %*%
+                        tF.Vinv %*% as.matrix(y[i,]-f[i,])
+                }
 
             } else {
                 if (all(whereNA)) { ## All components missing
 
                     ## prior & posterior
-                    m[i+1,] <- a[i,] <- mod$GG %*% m[i,]
+                    if (any(!is.na(obs[i,]))) {
+                        m[i+1,] <- obs[i,]
+                        D.C[i+1,] <- rep(0, length(mod$m0))
+                    }
+                    else {
+                        m[i+1,] <- a[i,] <- mod$GG %*% m[i,] + ctrl[i,]
+                    }
                     tmp <- La.svd(rbind( D.C[i,]*t(mod$GG%*%U.C[[i]]), sqrtW ), nu=0)
                     U.C[[i+1]] <- U.R[[i]] <- t(tmp$vt)
                     D.C[i+1,] <- D.R[i,] <- tmp$d
@@ -1215,7 +1249,7 @@ dlmFilter <- function(y, mod, debug = FALSE, simplify = FALSE)
                     sqrtVinvTMP <- Dv.inv * tmp$vt
                     tF.VinvTMP <- t(mod$FF[good,,drop=FALSE]) %*% crossprod(sqrtVinvTMP)
                     ## prior
-                    a[i,] <- mod$GG %*% m[i,]
+                    a[i,] <- mod$GG %*% m[i,] + ctrl[i,]
                     tmp <- La.svd(rbind( D.C[i,]*t(mod$GG%*%U.C[[i]]), sqrtW ), nu=0)
                     U.R[[i]] <- t(tmp$vt)
                     D.R[i,] <- tmp$d
@@ -1229,8 +1263,14 @@ dlmFilter <- function(y, mod, debug = FALSE, simplify = FALSE)
                     U.C[[i+1]] <- U.R[[i]] %*% t(tmp$vt)
                     foo <- 1/tmp$d; foo[abs(foo)==Inf] <- 0
                     D.C[i+1,] <- foo
-                    m[i+1,] <- a[i,] + crossprod(D.C[i+1,]*t(U.C[[i+1]])) %*%
-                        tF.VinvTMP %*% as.matrix(y[i,good]-f[i,good])
+                    if (any(!is.na(obs[i,]))) {
+                        m[i+1,] <- obs[i,]
+                        D.C[i+1,] <- rep(0, length(mod$m0))
+                    }
+                    else {
+                        m[i+1,] <- a[i,] + crossprod(D.C[i+1,]*t(U.C[[i+1]])) %*%
+                            tF.VinvTMP %*% as.matrix(y[i,good]-f[i,good])
+                    }
                 }
             }
         }
@@ -1377,13 +1417,20 @@ dlmSmooth.dlmFiltered <- function(y, ..., debug = FALSE)
 }
 
 
-dlmBSample <- function(modFilt)
+dlmBSample <- function(modFilt, knownstate)
 {
     eps <- .Machine$double.eps^.4
     mod <- c(modFilt[match(c("m", "U.C", "D.C", "a", "U.R", "D.R"),names(modFilt))],
              modFilt$mod[match(c("GG", "W", "JGG", "JW", "X"), names(modFilt$mod))])
     n <- length(mod$U.R) # number of obs
     p <- NCOL(mod$m) # dimension of state vector
+    if (hasArg(knownstate)) {
+        knownstate <- as.matrix(knownstate)
+        if (ncol(knownstate) != p)
+            stop("ERROR: object 'knownstate' has the wrong dimensions")
+        if (NROW(knownstate) != n)
+            stop("ERROR: object 'knownstate' should be the same length as model matrices")
+    }
     mtsp <- tsp(mod$m)
     if (p==1) {
         dim(mod$m) <- c(n+1, 1)
@@ -1416,9 +1463,19 @@ dlmBSample <- function(modFilt)
     }
     ## generate last theta
     theta[n+1,] <- mod$m[n+1,] + mod$U.C[[n+1]] %*% matrix(mod$D.C[n+1,]*rnorm(p))
+    if (hasArg(knownstate)) {
+        if(!is.na(knownstate[n,]))
+          theta[n+1,] <- knownstate[n,]
+    }
     ## generate all the other theta's
     for (i in (n:1))
     {
+        if (hasArg(knownstate)) {
+            if (any(!is.na(knownstate[i-1,]))) {
+            theta[i,] <- knownstate[i-1,]
+            next
+            }
+        }
         if ( tvGG )
             mod$GG[mod$JGG[,-3,drop=FALSE]] <- mod$X[i,mod$JGG[,3]]
         if ( tvW ) {
